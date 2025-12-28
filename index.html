@@ -1,8 +1,8 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>QR Studio</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -72,8 +72,9 @@
       cursor: pointer;
       transition: transform 140ms ease, box-shadow 140ms ease;
     }
-    .btn:hover { transform: translateY(-2px); box-shadow: 0 16px 48px rgba(14, 165, 233, 0.45); }
-    .btn:active { transform: translateY(0); }
+    .btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 16px 48px rgba(14, 165, 233, 0.45); }
+    .btn:active:not(:disabled) { transform: translateY(0); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
     .hint { color: var(--muted); font-size: 13px; line-height: 1.6; }
     .preview { justify-self: center; align-self: center; text-align: center; display: grid; gap: 12px; }
     .qr-box {
@@ -89,6 +90,7 @@
     }
     .qr-box img { width: 100%; height: 100%; object-fit: contain; }
     .qr-box.empty { color: var(--muted); border-color: rgba(255, 255, 255, 0.08); }
+    .error { color: #f87171; font-size: 14px; padding: 12px; border-radius: 8px; background: rgba(248, 113, 113, 0.1); }
     @media (max-width: 640px) { .header { flex-direction: column; align-items: flex-start; } .title { font-size: 24px; } }
   </style>
 </head>
@@ -99,29 +101,75 @@
       <div class="pill">Instant QR generator</div>
     </div>
 
-    <form method="post">
+    <form id="qrForm">
       <div>
         <label for="url">Target URL or text</label>
-        <input id="url" class="input" type="text" name="url" value="{{ url_value }}" placeholder="https://example.com" required />
+        <input id="url" class="input" type="text" name="url" placeholder="https://example.com" required />
       </div>
       <div class="actions">
-        <button class="btn" type="submit">Generate QR</button>
+        <button class="btn" type="submit" id="generateBtn">Generate QR</button>
         <div class="hint">Paste any URL or text, then hit Generate. The QR code will appear on the right.</div>
       </div>
+      <div id="error" class="error" style="display: none;"></div>
     </form>
 
     <div class="preview">
-      <div class="qr-box {% if not img_data %}empty{% endif %}">
-        {% if img_data %}
-          <img src="data:image/png;base64,{{ img_data }}" alt="QR code" />
-        {% else %}
-          <div>QR preview</div>
-        {% endif %}
+      <div class="qr-box empty" id="qrBox">
+        <div id="placeholder">QR preview</div>
+        <img id="qrImage" style="display: none;" alt="QR code" />
       </div>
-      {% if img_data %}
-        <a class="btn" href="data:image/png;base64,{{ img_data }}" download="qr-code.png">Download PNG</a>
-      {% endif %}
+      <a class="btn" id="downloadBtn" style="display: none;" download="qr-code.png">Download PNG</a>
     </div>
   </div>
+
+  <script>
+    const form = document.getElementById('qrForm');
+    const urlInput = document.getElementById('url');
+    const generateBtn = document.getElementById('generateBtn');
+    const qrBox = document.getElementById('qrBox');
+    const placeholder = document.getElementById('placeholder');
+    const qrImage = document.getElementById('qrImage');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const errorDiv = document.getElementById('error');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const url = urlInput.value.trim();
+      if (!url) return;
+
+      generateBtn.disabled = true;
+      generateBtn.textContent = 'Generating...';
+      errorDiv.style.display = 'none';
+
+      try {
+        const response = await fetch('/.netlify/functions/generate-qr', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url })
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to generate QR code');
+        }
+
+        const data = await response.json();
+        
+        qrImage.src = `data:image/png;base64,${data.qr_code}`;
+        qrImage.style.display = 'block';
+        placeholder.style.display = 'none';
+        qrBox.classList.remove('empty');
+        
+        downloadBtn.href = `data:image/png;base64,${data.qr_code}`;
+        downloadBtn.style.display = 'block';
+      } catch (error) {
+        errorDiv.textContent = error.message;
+        errorDiv.style.display = 'block';
+      } finally {
+        generateBtn.disabled = false;
+        generateBtn.textContent = 'Generate QR';
+      }
+    });
+  </script>
 </body>
 </html>
